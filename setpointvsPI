@@ -1,0 +1,60 @@
+clc; clear; close all;
+
+%--- Sistema: Cámara frigorífica ---
+s = tf('s');
+R = 0.0816;              
+C = 24120;               
+G_planta = 1/(C*R) / (s + 1/(C*R));
+
+Gs_sensor = 10;          
+G_total = G_planta * Gs_sensor;
+
+%--- Controlador PI ---
+polo = pole(G_total);
+Ti = -1 / polo;
+PI = (s + 1/Ti) / s;
+
+s1 = -0.002;
+G_eval = evalfr(G_total * PI, s1);
+Kp = 1 / abs(G_eval);
+
+PI = Kp * PI;
+
+%--- Sistema con PI ---
+FdTLApi = PI * G_total;
+FdTLCpi = minreal(feedback(FdTLApi, 1));
+
+%--- Simulación ---
+t = linspace(0, 2e4, 1000);         
+T_ini = 25;                         
+T_set = -5;                         
+deltaT = T_set - T_ini;
+
+[y, t_out] = step(deltaT * FdTLCpi, t);
+y = y + T_ini;
+
+%--- Setpoint visual: pasa de 25 °C a -5 °C en t = 1 s ---
+setpoint = T_ini * ones(size(t_out));
+setpoint(t_out >= 1) = T_set;
+
+%--- Gráfico mejorado ---
+figure('Color','w');
+plot(t_out, y, 'b', 'LineWidth', 2); hold on;
+plot(t_out, setpoint, 'Color', [1 0.5 0], 'LineWidth', 2); % Naranja
+
+yline(T_ini, '--k', 'Inicial (25°C)', ...
+    'LabelHorizontalAlignment','left', 'FontSize', 11, 'Color', [0.2 0.2 0.2]);
+
+yline(T_set, '--r', 'Setpoint (-5°C)', ...
+    'LabelHorizontalAlignment','left', 'FontSize', 11, 'Color', [0.8 0 0]);
+
+xlabel('Tiempo [s]', 'FontSize', 12);
+ylabel('Temperatura [°C]', 'FontSize', 12);
+title('Respuesta del sistema con controlador PI vs Setpoint', 'FontSize', 14);
+legend('Salida del sistema', 'Setpoint escalonado', 'Location', 'best', 'FontSize', 11);
+grid on;
+
+% Mejoras visuales
+set(gca, 'FontSize', 11, 'LineWidth', 1.2);
+xlim([0 t(end)]);
+ylim([T_set - 5, T_ini + 5]);
