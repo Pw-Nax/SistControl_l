@@ -1,49 +1,52 @@
+% Sistemas de Control 1 
+% Alumnos:
+% Cabero, Mauro Ezequiel.
+% López, Franco Gabriel.
+% El siguiente script posee el modelado con el controlador implementado.
 clc; clear; close all;
 
-%--- Sistema: Cámara frigorífica ---
+% --- PARÁMETROS FÍSICOS DE LA CÁMARA DE FRÍO ---
+e = 0.1;               % [m] espesor aislante
+k = 0.025;             % [W/m.K] conductividad térmica
+A = 49;                % [m²] área superficial
+R = e / (k * A);       % [K/W] resistencia térmica
+
+rho = 1.2;             % [kg/m³] densidad del aire
+V = 20;                % [m³] volumen de la cámara
+cp = 1005;             % [J/kg.K] calor específico
+C = rho * V * cp;      % [J/K] capacidad térmica
+
+% --- SISTEMA DE TRANSFERENCIA (PLANTA) ---
 s = tf('s');
+G = 1 / (R*C*s + 1);   % Planta térmica
 
-% Parámetros físicos (cambiados desde el modelo teórico)
-R = 0.0816;              % [°C/W]
-C = 24120;               % [J/°C]
-G_planta = 1/(C*R) / (s + 1/(C*R));   % Función de transferencia térmica
+% --- TIEMPO DE ESTABLECIMIENTO DESEADO ---
+Ts_deseado = 3600;                  % [s] tiempo de establecimiento (1 hora)
+wn = 4 / Ts_deseado;                % Frecuencia natural no amortiguada
+s1 = -wn;                           % Punto deseado en el eje real
 
-% Parámetros del sensor
-Gs_sensor = 10;          % [mV/°C] -> suponemos linealidad
-G_total = G_planta * Gs_sensor;
+fprintf("Frecuencia wn = %.7f rad/s\n", wn);
+fprintf("Polo deseado en s = %.7f\n", s1);
 
-%--- Diseño del controlador PI ---
-polo = pole(G_total);        % Extraer el polo dominante
-Ti = -1 / polo;              % Tiempo de integración para cancelar el polo
-PI = (s + 1/Ti) / s;
+% --- CÁLCULO DE Kp USANDO LA CONDICIÓN DE MÓDULO ---
+Kp = abs(1 / evalfr(G, s1));       % |1/G(s1)|
 
-% Ganancia del controlador por condición de módulo
-s1 = -0.002;                 % Punto deseado en el lugar de raíces
-G_eval = evalfr(G_total * PI, s1);
-Kp = 1 / abs(G_eval);
+fprintf("Ganancia Kp necesaria = %.5f\n", Kp);
 
-% Controlador completo
-PI = Kp * PI;
+% --- RESPUESTA DEL SISTEMA CON ESA Kp ---
+G_cl = feedback(Kp * G, 1);
 
-%--- Sistema con PI ---
-FdTLApi = PI * G_total;
-FdTLCpi = minreal(feedback(FdTLApi, 1));    % Sistema a lazo cerrado
-
-%--- Simulación ---
-t = linspace(0, 2e4, 1000);         % Tiempo [s]
-T_ini = 25;                         % Temperatura inicial [°C]
-T_set = -5;                         % Setpoint deseado [°C]
-deltaT = T_set - T_ini;
-
-[y, t_out] = step(deltaT * FdTLCpi, t);
-y = y + T_ini;                      % Ajustamos respuesta para que parta de T_ini
-
-%--- Gráfico ---
 figure;
-plot(t_out, y, 'b', 'LineWidth', 1.5); hold on;
-yline(T_ini, '--k', 'Inicial (25°C)', 'LabelHorizontalAlignment','left');
-yline(T_set, '--r', 'Setpoint (-5°C)', 'LabelHorizontalAlignment','left');
+step(G_cl);
+title('Respuesta al escalón con controlador proporcional');
+ylabel('Temperatura [K]');
 xlabel('Tiempo [s]');
-ylabel('Temperatura [°C]');
-title('Respuesta del sistema con controlador PI');
 grid on;
+
+% --- LUGAR DE RAÍCES ---
+figure;
+rlocus(G); grid on;
+hold on;
+plot(real(s1), imag(s1), 'ro', 'MarkerSize', 10, 'LineWidth', 2);
+title('Lugar de raíces con polo deseado');
+legend('Lugar de raíces', 'Polo deseado');
